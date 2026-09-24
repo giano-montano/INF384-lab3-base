@@ -73,12 +73,39 @@ jobs:
   #
   # Sustituir el paso centinela por la implementacion.
   calidad:
+    needs: pruebas
     runs-on: ubuntu-latest
     steps:
-      - name: Sin implementar
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Recuperar el reporte de cobertura
+        uses: actions/download-artifact@v4
+        with:
+          name: cobertura
+          path: coverage/
+
+      - name: Analisis en SonarQube Cloud
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+        with:
+          args: >
+            -Dsonar.organization=${{ vars.SONAR_ORG }}
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
+
+      - name: Dejar el resultado visible
+        if: always()
         run: |
-          echo "::error::El job 'calidad' no esta implementado."
-          exit 1
+          {
+            echo '### Calidad · SonarQube Cloud'
+            echo
+            echo 'Compuerta informativa: no detiene el pipeline.'
+            echo
+            echo "Proyecto: https://sonarcloud.io/project/overview?id=${{ vars.SONAR_PROJECT_KEY }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # TODO
   # Buscar credenciales escritas en el codigo y en el historial del repositorio.
@@ -95,10 +122,29 @@ jobs:
   secretos:
     runs-on: ubuntu-latest
     steps:
-      - name: Sin implementar
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Buscar credenciales en el codigo y en el historial
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dejar el resultado visible
+        if: always()
         run: |
-          echo "::error::El job 'secretos' no esta implementado."
-          exit 1
+          {
+            echo '### Secretos · gitleaks'
+            echo
+            if [ '${{ job.status }}' = 'success' ]; then
+              echo 'Sin hallazgos en el codigo ni en el historial.'
+            else
+              echo 'HALLAZGO: credenciales en el codigo o en el historial. El pipeline se detiene.'
+              echo
+              echo 'Una credencial no se exceptua: se retira del codigo, se retira del historial y se rota en el origen.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # TODO
   # Contrastar el arbol de dependencias declarado en package-lock.json contra
@@ -116,10 +162,33 @@ jobs:
   dependencias:
     runs-on: ubuntu-latest
     steps:
-      - name: Sin implementar
+      - uses: actions/checkout@v4
+
+      - name: Analisis de composicion sobre el lock file
+        uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          TRIVY_INCLUDE_DEV_DEPS: true
+        with:
+          scan-type: fs
+          scan-ref: package-lock.json
+          scanners: vuln
+          severity: LOW,MEDIUM,HIGH,CRITICAL
+          exit-code: '0'
+          format: table
+          output: dependencias.txt
+
+      - name: Dejar el hallazgo visible
+        if: always()
         run: |
-          echo "::error::El job 'dependencias' no esta implementado."
-          exit 1
+          {
+            echo '### Dependencias · Trivy sobre package-lock.json'
+            echo
+            echo 'Alcance: arbol completo, incluidas las dependencias de desarrollo.'
+            echo
+            echo '```'
+            cat dependencias.txt || echo 'Si
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # TODO
   # Buscar patrones explotables en el codigo fuente.
@@ -131,10 +200,38 @@ jobs:
   estatico:
     runs-on: ubuntu-latest
     steps:
-      - name: Sin implementar
+      - uses: actions/checkout@v4
+
+      - name: Analizar el codigo fuente
         run: |
-          echo "::error::El job 'estatico' no esta implementado."
-          exit 1
+          docker run --rm \
+            --volume "${PWD}:/src" \
+            --workdir /src \
+            --env SEMGREP_SEND_METRICS=off \
+            semgrep/semgrep \
+            semgrep scan \
+              --config=p/default \
+              --config=p/javascript \
+              --json --quiet \
+              --output=semgrep.json \
+              src/ || true
+
+      - name: Dejar el hallazgo visible
+        if: always()
+        run: |
+          [ -f semgrep.json ] || echo '{"results":[]}' > semgrep.json
+          total=$(jq '.results | length' semgrep.json)
+          {
+            echo '### Estatico · Semgrep'
+            echo
+            echo "Hallazgos: ${total}"
+            echo
+            if [ "$total" -gt 0 ]; then
+              echo '| Regla | Archivo | Linea | Severidad |'
+              echo '|---|---|---|---|'
+              jq -r '.results[] | "| \(.check_id) | \(.path) | \(.start.line) | \(.extra.severity) |"' semgrep.json
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # TODO
   # Construir la imagen de la aplicacion y publicarla en el registro privado.
