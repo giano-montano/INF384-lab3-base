@@ -221,4 +221,4 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-        exit "$falla"
+          exit "$falla"
