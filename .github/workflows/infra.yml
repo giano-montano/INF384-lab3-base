@@ -255,7 +255,7 @@ jobs:
           path: infra
 
       - name: Inicializar contra el backend remoto
-        run: terraform init -backend-config=
+        run: terraform init -input=false -reconfigure -backend-config=backend.hcl
 
       - name: Aplicar el plan guardado
         run: terraform apply -input=false tfplan
