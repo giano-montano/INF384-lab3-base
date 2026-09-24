@@ -185,9 +185,11 @@ jobs:
             echo
             echo 'Alcance: arbol completo, incluidas las dependencias de desarrollo.'
             echo
-            echo '```'
-            cat dependencias.txt || echo 'Si
-            echo '```'
+            if [ -s dependencias.txt ]; then
+              sed 's/^/    /' dependencias.txt
+            else
+              echo 'Sin hallazgos.'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
   # TODO
