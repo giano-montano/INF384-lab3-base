@@ -3,7 +3,7 @@
 # linea anterior. Corregirlas es el bloque A1 de la guia del laboratorio.
 
 # defecto 1, corregido con versión fija
-FROM public.ecr.aws/lambda/nodejs:26-alpine3.23
+FROM public.ecr.aws/lambda/nodejs:24.2026.09.24.14    
 
 # defecto 2, corregido subiendo solo lo de src
 COPY src/ .
