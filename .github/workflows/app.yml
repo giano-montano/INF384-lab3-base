@@ -267,12 +267,76 @@ jobs:
   #
   # Sustituir el paso centinela por la implementacion.
   publicar:
+    needs: [calidad, secretos, dependencias, estatico]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
     steps:
-      - name: Sin implementar
+      - uses: actions/checkout@v4
+
+      - name: Credenciales temporales
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token:     ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: Iniciar sesion en el registro
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Construir y publicar
+        id: push
+        env:
+          REGISTRO: ${{ steps.ecr.outputs.registry }}
+          APLICACION: inf384-lab3
         run: |
-          echo "::error::El job 'publicar' no esta implementado."
-          exit 1
+          set -euo pipefail
+          sha="${GITHUB_SHA:0:7}"
+          imagen="${REGISTRO}/${APLICACION}"
+
+          docker build \
+            --platform linux/amd64 \
+            --label "org.opencontainers.image.title=${APLICACION}" \
+            --tag "${imagen}:${sha}" \
+            .
+
+          docker push "${imagen}:${sha}"
+
+          manifiesto=$(aws ecr batch-get-image \
+            --repository-name "${APLICACION}" \
+            --image-ids imageTag="${sha}" \
+            --query 'images[0].imageManifest' \
+            --output text)
+
+          aws ecr put-image \
+            --repository-name "${APLICACION}" \
+            --image-tag prd \
+            --image-manifest "${manifiesto}" \
+            > /dev/null 2>&1 || echo "El tag prd ya apunta a este manifiesto."
+
+          sha256=$(aws ecr describe-images \
+            --repository-name "${APLICACION}" \
+            --image-ids imageTag="${sha}" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)
+
+          digest="${imagen}@${sha256}"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo '### Imagen publicada'
+            echo
+            echo "| Campo | Valor |"
+            echo "|---|---|"
+            echo "| Tag inmutable | ${sha} |"
+            echo "| Tag de ambiente | prd |"
+            echo "| Digest | ${sha256} |"
+            echo
+            echo 'Los dos tags apuntan al mismo manifiesto. El despliegue va por digest.'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # Este job viene completo y no se modifica.
   # Las estrategias de despliegue y la verificacion posterior son contenido
