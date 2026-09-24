@@ -1,0 +1,13 @@
+# Se excluye todo el contexto y se reincluye unicamente lo que necesita
+# la etapa de construccion: los manifiestos y el codigo fuente.
+#
+# Lista blanca en vez de lista negra: un archivo nuevo en la raiz queda
+# fuera por defecto. Con lista negra habria que acordarse de excluirlo.
+*
+
+!package.json
+!package-lock.json
+!src
+
+# Lo que se reincluye con src/ pero no hace falta para el bundle.
+src/**/*.test.js
