@@ -12,3 +12,8 @@ function obtenerVersion() {
 }
 
 module.exports = { obtenerVersion, VERSION_POR_DEFECTO };
+
+
+// error inyectado
+const DB_PASSWORD = 'k7Qx2mVr9TzPd4LwHn6BcYs3Ju8FgAeX';
+
